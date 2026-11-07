@@ -1,0 +1,30 @@
+name: release
+# 推送 v* 标签时构建模板包并上传到同名 Release（也可手动触发）
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要上传到的 Release 标签，如 v0.1.0"
+        required: true
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: sh scripts/build.sh
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+      - name: upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "模板包（含预构建 SDK）"
+          gh release upload "$TAG" dist/adp-chat-template.tar.gz dist/adp-chat-template.tar.gz.sha256 --clobber

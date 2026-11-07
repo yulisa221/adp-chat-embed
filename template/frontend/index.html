@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AI 助手</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%234a70ff'/%3E%3C/svg%3E" />
+  <style>
+    html, body { height: 100%; margin: 0; background: #f4f6fa; }
+    #chat { position: fixed; inset: 0; }
+    .embed-link { position: fixed; right: 16px; bottom: 10px; z-index: 5; font: 12px -apple-system, 'PingFang SC', sans-serif; color: #8a919f; text-decoration: none; }
+    .embed-link:hover { color: #4a70ff; }
+    @media (max-width: 720px) { .embed-link { display: none; } }
+  </style>
+</head>
+<body>
+  <div id="chat"></div>
+  <a class="embed-link" href="./embed.html">嵌入到你的网站 →</a>
+  <!-- 整页对话：与嵌入到其它网站使用的是同一个 SDK -->
+  <script src="./api/chat/sdk/adp-chat.js"></script>
+  <script>
+    ADPChat.mount('#chat')
+    fetch('./api/chat/config').then(function (r) { return r.json() }).then(function (c) { if (c.name) document.title = c.name })
+  </script>
+</body>
+</html>

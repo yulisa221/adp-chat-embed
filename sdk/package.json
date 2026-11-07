@@ -1,0 +1,10 @@
+{
+  "name": "adp-chat-sdk",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "sh scripts/build.sh"
+  },
+  "description": "ADP 对话嵌入 SDK：复用 adp-chat-client 官方对话组件，Shadow DOM 隔离，两行代码嵌入任意网站"
+}

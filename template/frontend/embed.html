@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>嵌入到你的网站</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.7 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #1f2329; background: #f4f6fa; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 28px; }
+    h1 { font-size: 26px; margin: 0 0 6px; }
+    .sub { color: #4e5969; margin: 0 0 24px; }
+    h2 { font-size: 16px; margin: 28px 0 10px; }
+    .card { background: #fff; border: 1px solid #e5e8ef; border-radius: 12px; padding: 4px 18px 16px; }
+    pre { position: relative; margin: 0; background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 14px 16px; font: 12.5px/1.65 Menlo, Consolas, monospace; overflow: auto; }
+    .copy { position: absolute; top: 8px; right: 8px; border: none; border-radius: 6px; padding: 3px 10px; background: #334155; color: #e2e8f0; cursor: pointer; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #eef0f4; vertical-align: top; }
+    th { color: #4e5969; font-weight: 600; }
+    code { background: #eef1f6; padding: 1px 5px; border-radius: 4px; font: 12px Menlo, Consolas, monospace; }
+    pre code { background: none; padding: 0; border-radius: 0; color: inherit; font: inherit; white-space: pre; }
+    .demo { position: sticky; top: 24px; height: calc(100vh - 48px); max-height: 760px; border-radius: 14px; overflow: hidden; border: 1px solid #e5e8ef; box-shadow: 0 8px 30px rgba(15, 30, 60, .08); background: #fff; }
+    .tip { color: #86909c; font-size: 12.5px; }
+    @media (max-width: 960px) { .wrap { grid-template-columns: 1fr; } .demo { position: relative; height: 640px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <main>
+      <h1>嵌入到你的网站</h1>
+      <p class="sub">把下面两行代码放进任意网页即可使用，不需要 iframe，也不用改后端。右侧就是内嵌效果，右下角是悬浮气泡效果。</p>
+
+      <h2>① 悬浮气泡（右下角）</h2>
+      <pre><button class="copy">复制</button><code class="snippet" data-mode="bubble"></code></pre>
+
+      <h2>② 嵌入到页面中的某个区域</h2>
+      <pre><button class="copy">复制</button><code class="snippet" data-mode="inline"></code></pre>
+      <p class="tip">容器需要有高度，例如 <code>&lt;div id="chat" style="height:600px"&gt;&lt;/div&gt;</code>。</p>
+
+      <h2>常用配置</h2>
+      <div class="card">
+        <table>
+          <tr><th>配置</th><th>说明</th></tr>
+          <tr><td><code>title</code> / <code>avatar</code> / <code>greeting</code> / <code>questions</code></td><td>名称、头像、欢迎语、示例问题；不填则用站点默认值</td></tr>
+          <tr><td><code>theme: { primaryColor, mode, radius, fontFamily }</code></td><td>主色、亮 / 暗色、圆角、字体</td></tr>
+          <tr><td><code>position</code> / <code>width</code> / <code>height</code> / <code>bubbleIcon</code> / <code>open</code></td><td>气泡位置（right / left）、面板尺寸、按钮图标、是否默认展开</td></tr>
+          <tr><td><code>history</code></td><td>是否显示历史会话，默认显示</td></tr>
+          <tr><td><code>userToken</code></td><td>实名用户：传入你后端签发的用户凭证（字符串或返回凭证的函数），历史按用户隔离；不传则按浏览器匿名隔离</td></tr>
+          <tr><td><code>customCss</code></td><td>注入到对话框内部的额外 CSS，用于深度定制</td></tr>
+        </table>
+      </div>
+
+      <h2>返回值</h2>
+      <p><code>const chat = ADPChat.mount(...)</code>，可调用 <code>chat.open()</code>、<code>chat.close()</code>、<code>chat.newChat()</code>、<code>chat.send('你好')</code>、<code>chat.destroy()</code>。</p>
+    </main>
+    <aside class="demo" id="demo"></aside>
+  </div>
+
+  <script src="./api/chat/sdk/adp-chat.js"></script>
+  <script>
+    var src = new URL('./api/chat/sdk/adp-chat.js', location.href).href
+    var tpl = {
+      bubble: '<script src="' + src + '"><\/script>\n<script>\n  ADPChat.mount({ theme: { primaryColor: "#4a70ff" } })\n<\/script>',
+      inline: '<div id="chat" style="height:600px"></div>\n<script src="' + src + '"><\/script>\n<script>\n  ADPChat.mount("#chat")\n<\/script>'
+    }
+    document.querySelectorAll('.snippet').forEach(function (el) { el.textContent = tpl[el.dataset.mode] })
+    document.querySelectorAll('.copy').forEach(function (btn) {
+      btn.onclick = function () {
+        navigator.clipboard.writeText(btn.nextElementSibling.textContent).then(function () {
+          btn.textContent = '已复制'; setTimeout(function () { btn.textContent = '复制' }, 1500)
+        })
+      }
+    })
+    ADPChat.mount('#demo')
+    ADPChat.mount({})
+  </script>
+</body>
+</html>
