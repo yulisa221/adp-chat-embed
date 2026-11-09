@@ -21,10 +21,11 @@ jobs:
       - run: sh scripts/build.sh
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+      - run: sh scripts/build-lite.sh
       - name: upload
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "模板包（含预构建 SDK）"
-          gh release upload "$TAG" dist/adp-chat-template.tar.gz dist/adp-chat-template.tar.gz.sha256 --clobber
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "adp-chat-template：成品界面（含预构建 SDK）；adp-chat-lite-template：轻量版（纯 JS/CSS 界面，可改）"
+          gh release upload "$TAG" dist/adp-chat-template.tar.gz dist/adp-chat-template.tar.gz.sha256 dist/adp-chat-lite-template.tar.gz dist/adp-chat-lite-template.tar.gz.sha256 --clobber

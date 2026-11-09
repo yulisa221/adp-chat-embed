@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>嵌入到你的网站</title>
+  <style>
+    body { margin: 0; background: #f4f6fa; font: 14px/1.7 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #1f2329; }
+    main { max-width: 860px; margin: 0 auto; padding: 32px 20px 120px; }
+    h1 { font-size: 24px; margin: 0 0 4px; } h2 { font-size: 17px; margin: 32px 0 8px; }
+    p.sub { color: #8a919f; margin: 0 0 16px; }
+    pre { background: #1f2329; color: #e6e8eb; padding: 14px 16px; border-radius: 10px; overflow-x: auto; font: 13px/1.6 Menlo, Consolas, monospace; position: relative; }
+    .copy { position: absolute; top: 8px; right: 8px; border: 0; border-radius: 6px; padding: 2px 10px; background: #3a3f47; color: #fff; cursor: pointer; font-size: 12px; }
+    table { border-collapse: collapse; width: 100%; background: #fff; } th, td { border: 1px solid #e5e6eb; padding: 8px 10px; text-align: left; vertical-align: top; } th { background: #f7f8fa; }
+    code { background: #eceef2; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+    #demo { height: 520px; border: 1px solid #e5e6eb; border-radius: 12px; overflow: hidden; background: #fff; }
+    a { color: #4a70ff; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>把对话嵌入你的网站</h1>
+  <p class="sub">纯 JS + CSS，无框架、无构建；可以开箱即用，也可以改样式、改结构，或者只用通信层自己写界面。</p>
+
+  <h2>方式一：页面里嵌一块对话区域</h2>
+  <pre data-code="inline"></pre>
+  <div id="demo"></div>
+
+  <h2>方式二：右下角悬浮气泡</h2>
+  <pre data-code="bubble"></pre>
+  <p>本页右下角就是效果。</p>
+
+  <h2>改样式</h2>
+  <p>没有 Shadow DOM，样式就是普通 CSS。最简单的是覆盖变量：</p>
+  <pre data-code="css"></pre>
+  <p>也可以直接覆盖 <code>.adpc-*</code> 类名；不想加载默认样式时传 <code>css: false</code>，把 <a href="./adp-chat/adp-chat-ui.css" target="_blank">adp-chat-ui.css</a> 拷到自己项目里改。</p>
+
+  <h2>改结构，或完全自己写界面</h2>
+  <table>
+    <tr><th>文件</th><th>作用</th><th>怎么改</th></tr>
+    <tr><td><a href="./adp-chat/adp-chat-ui.js" target="_blank">adp-chat-ui.js</a></td><td>默认界面：会话列表、消息、Markdown、执行过程、附件、输入框</td><td>拷到自己项目里直接改，每块界面是一个 render 函数</td></tr>
+    <tr><td><a href="./adp-chat/adp-client.js" target="_blank">adp-client.js</a></td><td>通信层：应用信息、会话、历史、上传、流式对话、停止</td><td>一般不用改；自己写界面时只引入它，见 <a href="./custom.html">30 行示例</a></td></tr>
+  </table>
+
+  <h2>参数</h2>
+  <table>
+    <tr><th>参数</th><th>说明</th></tr>
+    <tr><td><code>mode</code></td><td><code>'inline'</code>（默认，填满容器）或 <code>'bubble'</code>（悬浮气泡）</td></tr>
+    <tr><td><code>theme</code></td><td><code>'light'</code> / <code>'dark'</code></td></tr>
+    <tr><td><code>title</code> <code>avatar</code> <code>greeting</code> <code>questions</code></td><td>覆盖名称、头像、欢迎语、示例问题；不传则用 Agent 在 ADP 里的配置</td></tr>
+    <tr><td><code>history</code></td><td>是否显示会话列表，默认 <code>true</code></td></tr>
+    <tr><td><code>css</code></td><td>默认自动加载样式；<code>false</code> 不加载，或传自己的样式表地址</td></tr>
+    <tr><td><code>getUserToken</code></td><td>网站有登录体系时，返回服务端签发的用户凭证，历史按用户保存（见部署说明）</td></tr>
+  </table>
+  <p>返回值：<code>{ client, open(), close(), send(text), newChat(), destroy() }</code>。</p>
+</main>
+
+<script src="./adp-chat/adp-client.js"></script>
+<script src="./adp-chat/adp-chat-ui.js"></script>
+<script>
+  var base = new URL('./adp-chat/', location.href).href
+  var code = {
+    inline: '<div id="chat" style="height:600px"></div>\n<script src="' + base + 'adp-client.js"><\/script>\n<script src="' + base + 'adp-chat-ui.js"><\/script>\n<script>\n  ADPChatUI.mount(\'#chat\')\n<\/script>',
+    bubble: '<script src="' + base + 'adp-client.js"><\/script>\n<script src="' + base + 'adp-chat-ui.js"><\/script>\n<script>\n  ADPChatUI.mount(null, { mode: \'bubble\' })\n<\/script>',
+    css: '.adpc {\n  --adpc-primary: #e4393c;      /* 主色：发送按钮、链接 */\n  --adpc-user-bg: #fff1f0;      /* 用户消息底色 */\n  --adpc-radius: 6px;           /* 圆角 */\n  --adpc-font-size: 15px;\n  --adpc-max-width: 900px;      /* 消息区最大宽度 */\n  --adpc-bubble-width: 420px;   /* 气泡窗口尺寸 */\n}',
+  }
+  document.querySelectorAll('pre[data-code]').forEach(function (pre) {
+    var text = code[pre.dataset.code]
+    pre.textContent = text
+    var b = document.createElement('button'); b.className = 'copy'; b.textContent = '复制'
+    b.onclick = function () { navigator.clipboard.writeText(text).then(function () { b.textContent = '已复制'; setTimeout(function () { b.textContent = '复制' }, 1200) }) }
+    pre.appendChild(b)
+  })
+  var client = ADPClient.create()
+  ADPChatUI.mount('#demo', { client: client, history: false })
+  ADPChatUI.mount(null, { mode: 'bubble', client: client })
+</script>
+</body>
+</html>

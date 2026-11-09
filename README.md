@@ -5,6 +5,17 @@
 
 本仓库是 WorkBuddy `adp-sites` 技能「ADP 对话接入」场景的模板与 SDK 源码。技能使用时直接下载 [Releases](../../releases) 里预构建好的模板包，不需要在本地构建。
 
+## 两种界面
+
+| | 轻量版 `adp-chat-lite-template`（适合要自定义界面） | 成品版 `adp-chat-template`（适合要同款智能工作台） |
+| --- | --- | --- |
+| 界面 | 纯 JS + CSS（`lite/frontend/adp-chat/`），无框架、无构建、不用 Shadow DOM | 官方对话组件，Shadow DOM 隔离 |
+| 开箱即用 | 两行代码嵌入，含流式输出、Markdown、执行过程、会话列表、附件、停止、气泡 | 同左，另含 Widget、「已处理 XX 秒」折叠、模型 / Skills / 连接器 / 工具选择 |
+| 定制 | CSS 变量 → 覆盖 `.adpc-*` 类名 → 直接改 `adp-chat-ui.js` → 只用 `adp-client.js` 自己写界面 | 只能改主题变量 |
+| 模板包体积 | 约 30KB | 约 1.9MB |
+
+两种界面用同一套云函数后端（`template/functions`）。轻量版不需要构建：`sh scripts/build-lite.sh` 只是打包。
+
 ## 两种对话方式
 
 | | 方式一：云函数转发 | 方式二：浏览器直连 WebSocket（推荐） |
@@ -21,6 +32,10 @@
 ## 目录
 
 ```text
+lite/frontend/              轻量版页面（index.html 整页对话、embed.html 嵌入说明、custom.html 自写界面示例）
+  adp-chat/adp-client.js   通信层（无界面）：配置、会话、历史、上传、流式对话（WebSocket / SSE）、停止
+  adp-chat/adp-chat-ui.js  默认界面（可改）
+  adp-chat/adp-chat-ui.css 默认样式（CSS 变量）
 sdk/                       嵌入 SDK 源码（Vue 3 + Vite，放进 adp-chat-client 的 workspace 构建）
   src/loader.ts            入口 adp-chat.js（约 3KB）：创建 Shadow DOM、内嵌 / 气泡、按需加载 core
   src/core/ChatApp.vue     对话界面：官方 Chat / HistoryList 组件 + 按会话独立的流状态 + 文件预览 + Widget 交互
@@ -34,6 +49,7 @@ template/                  adp-sites 项目模板（下载后整目录拷贝，�
   migrations/              会话 / 消息表、访客 Agent 绑定表
   functions/chat/          HTTP 云函数（FastAPI），挂在 /api/chat
 scripts/build.sh           从源码构建 dist/adp-chat-template.tar.gz
+scripts/build-lite.sh      打包 dist/adp-chat-lite-template.tar.gz（template 后端 + lite/frontend）
 UPSTREAM_REF               构建所用的 adp-chat-client 提交
 ```
 

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>自己写界面的示例</title>
+  <style>
+    body { max-width: 680px; margin: 32px auto; padding: 0 16px; font: 14px/1.6 -apple-system, 'PingFang SC', sans-serif; color: #1f2329; }
+    #log > div { margin: 10px 0; white-space: pre-wrap; }
+    .me { text-align: right; color: #4a70ff; }
+    .steps { color: #8a919f; font-size: 12px; }
+    form { display: flex; gap: 8px; }
+    input { flex: 1; padding: 8px 10px; }
+  </style>
+</head>
+<body>
+  <h3>只用 adp-client.js，界面完全自己写（约 30 行）</h3>
+  <div id="log"></div>
+  <form id="f"><input id="q" placeholder="输入消息" autocomplete="off" /><button id="btn">发送</button></form>
+
+  <script src="./adp-chat/adp-client.js"></script>
+  <script>
+    var client = ADPClient.create()          // 后端默认是本站 /api/chat；嵌到别的网站时传 { apiBase: 'https://<站点>/api/chat' }
+    var conversationId = ''                  // 同一个会话里多轮对话
+    var run = null
+    var log = document.getElementById('log'), q = document.getElementById('q'), btn = document.getElementById('btn')
+
+    document.getElementById('f').onsubmit = function (e) {
+      e.preventDefault()
+      if (run) { run.stop(); return }        // 回复中再点一次 = 停止
+      var text = q.value.trim(); if (!text) return
+      q.value = ''
+      log.appendChild(Object.assign(document.createElement('div'), { className: 'me', textContent: text }))
+      var box = log.appendChild(document.createElement('div'))
+      btn.textContent = '停止'
+      run = client.send({ conversationId: conversationId, text: text }, {
+        onConversation: function (c) { conversationId = c.id },
+        onUpdate: function (m) {             // m.text 是到目前为止的完整回复（Markdown），m.steps 是执行过程
+          box.innerHTML = '<div class="steps">' + m.steps.map(function (s) { return '· ' + s.title }).join('<br>') + '</div>'
+          box.appendChild(document.createTextNode(m.text))
+        },
+        onDone: function (m) {
+          if (m.error) box.appendChild(document.createTextNode('\n⚠ ' + m.error))
+          run = null; btn.textContent = '发送'
+        },
+      })
+    }
+  </script>
+</body>
+</html>
