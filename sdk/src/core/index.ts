@@ -28,6 +28,7 @@ export interface CoreOptions {
   theme?: 'light' | 'dark'
   language?: string
   history?: boolean
+  resume?: boolean
   onClose?: () => void
 }
 
@@ -97,6 +98,7 @@ export function mountCore(container: HTMLElement, host: HTMLElement, popupRoot: 
         theme: opts.theme || 'light',
         language: opts.language || 'zh-CN',
         history: opts.history !== false,
+        resume: opts.resume !== false,
         closable: opts.mode === 'bubble',
         onClose: () => opts.onClose?.(),
       })

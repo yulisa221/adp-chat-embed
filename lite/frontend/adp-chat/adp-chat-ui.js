@@ -172,7 +172,7 @@
    * mount(target, options)
    *   target   选择器或元素；mode 为 bubble 时可传 null（挂到 body）
    *   options  { apiBase, mode: 'inline'|'bubble', theme: 'light'|'dark', title, avatar, greeting, questions,
-   *              history: true, placeholder, css: true | '<样式表地址>', getUserToken, client }
+   *              history: true, resume: true, placeholder, css: true | '<样式表地址>', getUserToken, client }
    * 返回 { client, open(), close(), send(text), newChat(), destroy() }
    */
   function mount(target, options) {
@@ -724,7 +724,12 @@
       }
       render()
     }, function (e) { console.warn('[ADPChatUI] 获取应用信息失败', e) })
-    if (side) client.listConversations().then(function (l) { conversations = l; renderSide() }, function (e) { console.warn('[ADPChatUI] 获取会话列表失败', e) })
+    if (side) client.listConversations().then(function (l) {
+      conversations = l
+      renderSide()
+      // 同一访客再次打开：直接进入最近一次会话（列表按最近活跃倒序）；用户已开始新对话则不打扰
+      if (o.resume !== false && l.length && isNew(current) && !sess(current).messages.length) select(l[0].id)
+    }, function (e) { console.warn('[ADPChatUI] 获取会话列表失败', e) })
 
     return {
       client: client,

@@ -25,12 +25,15 @@ export interface ChatAppProps {
   language?: string
   /** 是否显示历史会话（默认显示） */
   history?: boolean
+  /** 打开页面时是否直接进入最近一次会话（默认是；false 则从新对话开始） */
+  resume?: boolean
   closable?: boolean
 }
 const props = withDefaults(defineProps<ChatAppProps>(), {
   theme: 'light',
   language: 'zh-CN',
   history: true,
+  resume: true,
   closable: false,
 })
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -89,6 +92,9 @@ async function loadConversations() {
   if (!props.history) return
   try {
     conversations.value = await props.api.conversations()
+    // 同一访客再次打开：直接进入最近一次会话（列表按最近活跃倒序）；用户已开始新对话则不打扰
+    const latest = conversations.value[0]
+    if (props.resume && latest && isNewKey(currentKey.value) && !current.value.records.length) selectConversation(latest)
   } catch (e) {
     console.warn('[ADPChat] 获取会话列表失败', e)
   }

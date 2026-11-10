@@ -30,6 +30,8 @@ export interface MountOptions {
   questions?: string[]
   /** 是否显示历史会话，默认 true */
   history?: boolean
+  /** 打开时直接进入最近一次会话，默认 true */
+  resume?: boolean
   language?: string
   theme?: ThemeOptions
   /** 注入到对话框内部的额外 CSS（兜底定制，内部 class 不保证跨版本兼容） */
@@ -191,7 +193,7 @@ function mount(target?: string | HTMLElement | MountOptions | null, maybe?: Moun
         mounted = core.mountCore(container, hostEl, popupRoot, {
           apiBase, visitorId: visitorId(), mode: isBubble ? 'bubble' : 'inline', getUserToken: userToken,
           title: opts.title, avatar: opts.avatar, greeting: opts.greeting, questions: opts.questions,
-          theme: opts.theme?.mode === 'dark' ? 'dark' : 'light', language: opts.language, history: opts.history,
+          theme: opts.theme?.mode === 'dark' ? 'dark' : 'light', language: opts.language, history: opts.history, resume: opts.resume,
           onClose: () => instance.close(),
         })
       }).catch((err) => {
