@@ -335,6 +335,17 @@ function disableWidgets(recordId: string) {
     .forEach((el) => el.setAttribute('disable', 'true'))
 }
 
+// ------------------------------------------------------------ 反问澄清（AskUserQuestion）
+// 官方在 layout/Index.vue 里处理：提交 = 发一条 questionnaire 内容（带 Answers）；跳过 = 发文本「跳过」
+async function onQuestionnaireSubmit(questionnaire: unknown) {
+  if (current.value.chatting) { MessagePlugin.warning('正在回复中，请稍后再试'); return }
+  await sendContents([{ Type: 'questionnaire', Questionnaire: questionnaire } as unknown as Content])
+}
+async function onQuestionnaireSkip() {
+  if (current.value.chatting) { MessagePlugin.warning('正在回复中，请稍后再试'); return }
+  await send('跳过')
+}
+
 async function onWidgetEvent(event: CustomEvent, widgetRunId: string, widgetId: string, recordId: string) {
   const result = routeWidgetEvent(event, widgetRunId, widgetId)
   if (result.handled || !result.widgetActionRequest) {
@@ -488,6 +499,8 @@ defineExpose({ newChat, send: (text: string) => send(text) })
           @stop="stop"
           @uploadFile="uploadFiles"
           @widgetEvent="onWidgetEvent"
+          @questionnaireSubmit="onQuestionnaireSubmit"
+          @questionnaireSkip="onQuestionnaireSkip"
           @loadMore="() => chatRef?.notifyComplete?.()"
         />
         <div v-if="loadingRecords" class="adp-loading">正在加载历史消息…</div>

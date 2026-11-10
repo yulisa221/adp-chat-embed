@@ -375,6 +375,11 @@ def clean_contents(raw) -> list[dict]:
                 ("Payload", 20000), ("WidgetSnapshot", 200000))}
             if item["ActionType"]:
                 out.append({"Type": "widget_action", "WidgetAction": item})
+        elif c.get("Type") == "questionnaire" and isinstance(c.get("Questionnaire"), dict):
+            # 反问澄清（AskUserQuestion）的作答：原样带回题目 + Answers，结构与官方 chatclient 一致
+            q = c["Questionnaire"]
+            if len(json.dumps(q, ensure_ascii=False)) <= 200000:
+                out.append({"Type": "questionnaire", "Questionnaire": q})
     return out[:20]
 
 
@@ -388,6 +393,8 @@ def make_title(contents: list[dict]) -> str:
                 return text[:40]
     if any(c["Type"] == "widget_action" for c in contents):
         return "卡片交互"
+    if any(c["Type"] == "questionnaire" for c in contents):
+        return "问题澄清"
     names = [c["File"]["FileName"] for c in contents if c["Type"] == "file" and c["File"].get("FileName")]
     return ("、".join(names) or "新对话")[:40]
 

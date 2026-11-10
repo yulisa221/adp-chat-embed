@@ -190,3 +190,54 @@
 @keyframes adpc-blink { 50% { opacity: 0; } }
 @keyframes adpc-bounce { 0%, 60%, 100% { transform: none; opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .adpc *, .adpc *::before, .adpc *::after { animation: none !important; transition: none !important; } }
+
+/* 引用角标、参考来源 */
+.adpc-cite { color: var(--adpc-primary); font-size: .75em; margin: 0 1px; }
+.adpc-refs { font-size: 13px; color: var(--adpc-muted); }
+.adpc-refs-title { margin-bottom: 2px; }
+.adpc-refs ol { margin: 0; padding-left: 20px; }
+.adpc-refs a { color: var(--adpc-primary); text-decoration: none; }
+.adpc-refs small { color: var(--adpc-muted); }
+.adpc-refs summary { cursor: pointer; }
+.adpc-ref-preview { margin: 4px 0 6px; padding: 8px 10px; border-radius: 8px; background: var(--adpc-bg-soft); max-height: 200px; overflow: auto; white-space: pre-wrap; }
+
+/* 推荐追问 / 选项卡 */
+.adpc-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.adpc-option { padding: 5px 12px; border: 1px solid var(--adpc-border); border-radius: 16px; background: var(--adpc-bg); cursor: pointer; font-size: 13px; text-align: left; }
+.adpc-option:hover { border-color: var(--adpc-primary); color: var(--adpc-primary); }
+
+/* 卡片操作标签（用户点了卡片按钮） */
+.adpc-tag { padding: 4px 10px; border-radius: 12px; background: var(--adpc-bg-soft); color: var(--adpc-muted); font-size: 12px; }
+
+/* Widget 卡片 */
+.adpc-widget { max-width: 100%; overflow-x: auto; }
+.adpc-widget adp-widget { display: block; }
+.adpc-widget-fallback { margin: 0; padding: 10px; border-radius: 8px; background: var(--adpc-code-bg); font-size: 12px; max-height: 240px; overflow: auto; }
+
+/* 反问澄清（AskUserQuestion） */
+.adpc-q { border: 1px solid var(--adpc-border); border-radius: var(--adpc-radius); padding: 14px 16px 12px; background: var(--adpc-bg); }
+.adpc-q-title { font-weight: 600; margin-bottom: 10px; }
+.adpc-q-list { display: flex; flex-direction: column; gap: 14px; }
+.adpc-q-text { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.adpc-q-hint { padding: 0 6px; border-radius: 4px; background: var(--adpc-bg-soft); color: var(--adpc-muted); font-size: 12px; line-height: 18px; }
+.adpc-q-opts { display: flex; flex-direction: column; gap: 6px; }
+.adpc-q-opt { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid var(--adpc-border); border-radius: 8px; background: var(--adpc-bg); cursor: pointer; text-align: left; }
+.adpc-q-opt:hover { border-color: var(--adpc-primary); }
+.adpc-q-opt.is-on { border-color: var(--adpc-primary); background: var(--adpc-user-bg); }
+.adpc-q-mark { flex: none; width: 14px; height: 14px; margin-top: 4px; border: 1.5px solid var(--adpc-border); border-radius: 50%; }
+.adpc-q-opt.is-multi .adpc-q-mark { border-radius: 3px; }
+.adpc-q-opt.is-on .adpc-q-mark { border-color: var(--adpc-primary); background: var(--adpc-primary); box-shadow: inset 0 0 0 2px var(--adpc-bg); }
+.adpc-q-label { display: flex; flex-direction: column; min-width: 0; }
+.adpc-q-label small { color: var(--adpc-muted); font-size: 12px; line-height: 1.5; }
+.adpc-q-other-input { width: 100%; margin-top: 6px; padding: 7px 10px; border: 1px solid var(--adpc-border); border-radius: 8px; font: inherit; color: inherit; background: var(--adpc-bg); outline: 0; }
+.adpc-q-other-input:focus { border-color: var(--adpc-primary); }
+.adpc-q-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.adpc-q-tip { color: var(--adpc-muted); font-size: 12px; }
+.adpc-q-skip, .adpc-q-submit { padding: 5px 16px; border-radius: 8px; cursor: pointer; border: 1px solid var(--adpc-border); background: var(--adpc-bg); }
+.adpc-q-submit { border-color: var(--adpc-primary); background: var(--adpc-primary); color: var(--adpc-primary-text) !important; }
+.adpc-q-submit:disabled { opacity: .45; cursor: not-allowed; }
+.adpc-qsum { border: 1px solid var(--adpc-border); border-radius: var(--adpc-radius); padding: 8px 14px; font-size: 13px; }
+.adpc-qsum summary { cursor: pointer; color: var(--adpc-muted); }
+.adpc-qsum dl { margin: 8px 0 2px; }
+.adpc-qsum dt { color: var(--adpc-muted); }
+.adpc-qsum dd { margin: 0 0 6px; }

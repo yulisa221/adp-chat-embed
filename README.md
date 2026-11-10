@@ -10,7 +10,7 @@
 | | 轻量版 `adp-chat-lite-template`（适合要自定义界面） | 成品版 `adp-chat-template`（适合要同款智能工作台） |
 | --- | --- | --- |
 | 界面 | 纯 JS + CSS（`lite/frontend/adp-chat/`），无框架、无构建、不用 Shadow DOM | 官方对话组件，Shadow DOM 隔离 |
-| 开箱即用 | 两行代码嵌入，含流式输出、Markdown、执行过程、会话列表、附件、停止、气泡 | 同左，另含 Widget、「已处理 XX 秒」折叠、模型 / Skills / 连接器 / 工具选择 |
+| 开箱即用 | 两行代码嵌入，含流式输出、Markdown、执行过程、会话列表、附件、停止、气泡；反问澄清（AskUserQuestion）、Widget 卡片（复用官方 `<adp-widget>`，按需加载）、推荐追问、参考来源与引用角标 | 同左，另含 Widget、「已处理 XX 秒」折叠、模型 / Skills / 连接器 / 工具选择 |
 | 定制 | CSS 变量 → 覆盖 `.adpc-*` 类名 → 直接改 `adp-chat-ui.js` → 只用 `adp-client.js` 自己写界面 | 只能改主题变量 |
 | 模板包体积 | 约 30KB | 约 1.9MB |
 

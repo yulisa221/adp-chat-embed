@@ -83,7 +83,18 @@
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<strong>$1</strong>')
     s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
     s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>')
+    s = s.replace(/\u0001(\d+)\u0001/g, '<sup class="adpc-cite">[$1]</sup>')
     return s.replace(/\u0000(\d+)\u0000/g, function (_, i) { return '<code>' + esc(codes[+i]) + '</code>' })
+  }
+
+  /** 引用角标：按 QuoteInfos 的字符位置插入 [n]（与官方 insertReference 一致），转成 <sup> 在 inline() 里完成 */
+  function withQuotes(text, quotes) {
+    if (!quotes || !quotes.length) return text
+    var arr = Array.from(text)
+    quotes.slice().sort(function (a, b) { return b.Position - a.Position || b.Index - a.Index }).forEach(function (q) {
+      arr.splice(Math.min(q.Position, arr.length), 0, '\u0001' + q.Index + '\u0001')
+    })
+    return arr.join('')
   }
 
   function markdown(src) {
@@ -141,6 +152,15 @@
     return out.join('')
   }
 
+  // ------------------------------------------------------------------ Widget 卡片：懒加载官方 <adp-widget> Web Component（与成品版同一个渲染器）
+  var widgetSdk = null
+  function loadWidgetSdk(url) {
+    if (global.customElements && customElements.get('adp-widget')) return Promise.resolve()
+    widgetSdk = widgetSdk || import(url).then(function () { return customElements.whenDefined('adp-widget') })
+      .catch(function (e) { widgetSdk = null; throw e })
+    return widgetSdk
+  }
+
   // ------------------------------------------------------------------ 样式自动加载（可用 css: false 关闭，改用自己的样式表）
   function ensureCss(href) {
     if (!href || document.querySelector('link[data-adpc-css]')) return
@@ -171,6 +191,10 @@
     var pending = []             // 待发送附件 { file, status, result }
     var destroyed = false
     var openSteps = new Map()
+    var nodeCache = new Map()      // 卡片 / 澄清表单的 DOM 复用：流式重绘时不重建，保留卡片内部状态和用户已选项
+    var qAnswers = new Map()       // 本地已提交的澄清作答：消息 id -> answers（等待服务端回放前先显示摘要）
+    var usedWidgets = new Set()    // 已提交过卡片交互的消息 id：其中的卡片禁用，防止重复提交
+    var widgetSdkUrl = o.widgetSdk || new URL('vendor/adp-widget/adp-widget.js', SCRIPT || location.href).href
 
     function newKey() { return 'new:' + Date.now() + Math.random().toString(36).slice(2, 6) }
     function isNew(k) { return k.indexOf('new:') === 0 }
@@ -283,7 +307,7 @@
     }
 
     function renderSteps(m) {
-      if (!m.steps.length) return null
+      if (!m.steps || !m.steps.length) return null
       var running = m.status === 'streaming'
       var label = running ? '正在处理…' : (m.status === 'stopped' ? '已停止' : '已处理') + (m.elapsed ? ' ' + fmtElapsed(m.elapsed) : '') + ' · ' + m.steps.length + ' 步'
       var det = h('details', { class: 'adpc-steps' + (running ? ' is-running' : '') }, [
@@ -302,27 +326,229 @@
       return det
     }
 
-    function renderMessage(m) {
+    // ---------- 反问澄清（AskUserQuestion）
+    // 状态：作答中（可交互）/ 已澄清（摘要）/ 已跳过 / 已过期（之后又发了别的消息，0 个问题）
+    function questionnaireState(m, q, idx, msgs) {
+      var raw = q.Answers || q.answers || []
+      if (raw.length) return { done: true, answers: raw }
+      if (qAnswers.has(m.id)) return { done: true, answers: qAnswers.get(m.id) }
+      for (var i = idx + 1; i < msgs.length; i++) {
+        var n = msgs[i]
+        if (n.role !== 'user') continue
+        if (n.kind === 'questionnaire-answer') return { done: true, answers: n.answers || [] }
+        return { done: true, answers: [], skipped: (n.text || '').trim() === '跳过' }
+      }
+      return { done: false }
+    }
+
+    function renderQuestionnaire(m, q, idx, msgs) {
+      var questions = q.Questions || q.questions || []
+      var title = q.Title || q.title || '问题澄清'
+      var st = questionnaireState(m, q, idx, msgs)
+      if (st.done) {
+        var answered = st.answers.length
+        var rows = answered ? st.answers.map(function (a) {
+          return [a.Question || a.question || '', (a.SelectedLabels || a.selected_labels || a.selectedLabels || []).join('、')]
+        }) : questions.map(function (x) { return [x.Question || x.question || '', st.skipped ? '跳过' : '未作答'] })
+        var det = h('details', { class: 'adpc-qsum' }, [
+          h('summary', { text: '已澄清 ' + answered + ' 个问题' }),
+          h('dl', null, rows.reduce(function (acc, r) { acc.push(h('dt', { text: r[0] }), h('dd', { text: r[1] })); return acc }, [])),
+        ])
+        if (answered) det.open = true
+        return det
+      }
+      if (m.status === 'streaming') return null
+      var key = 'q:' + m.id
+      if (nodeCache.has(key)) return nodeCache.get(key)
+      // 每题：已选下标 + 是否选了「其他」及其文本
+      var sel = questions.map(function () { return { picked: [], other: false, otherText: '' } })
+      var submitBtn = h('button', { class: 'adpc-q-submit', text: '提交' })
+      var tip = h('span', { class: 'adpc-q-tip' })
+      function multi(x) { return (x.Type || x.type) === 2 }
+      function refresh() {
+        var ok = questions.every(function (x, qi) {
+          var s0 = sel[qi], has = s0.picked.length || (s0.other && s0.otherText.trim())
+          return has || !(x.Required || x.required)
+        }) && sel.some(function (s0) { return s0.picked.length || (s0.other && s0.otherText.trim()) })
+        submitBtn.disabled = !ok
+      }
+      var card = h('div', { class: 'adpc-q' }, [
+        h('div', { class: 'adpc-q-title', text: title }),
+        h('div', { class: 'adpc-q-list' }, questions.map(function (x, qi) {
+          var opts = (x.Options || x.options || [])
+          var optEls = []
+          var otherInput = h('input', { class: 'adpc-q-other-input', placeholder: '请输入', maxlength: 1000, hidden: true,
+            oninput: function () { sel[qi].otherText = otherInput.value; refresh() } })
+          function pick(oi) {
+            var s0 = sel[qi]
+            if (oi === -1) {
+              s0.other = multi(x) ? !s0.other : true
+              if (!multi(x)) s0.picked = []
+            } else if (multi(x)) {
+              var at = s0.picked.indexOf(oi)
+              if (at >= 0) s0.picked.splice(at, 1); else s0.picked.push(oi)
+            } else { s0.picked = [oi]; s0.other = false }
+            optEls.forEach(function (el, k) { el.classList.toggle('is-on', k === opts.length ? s0.other : s0.picked.indexOf(k) >= 0) })
+            otherInput.hidden = !s0.other
+            if (s0.other) otherInput.focus()
+            refresh()
+          }
+          opts.concat([{ Label: '其他', Description: '' }]).forEach(function (op, oi) {
+            var isOther = oi === opts.length
+            optEls.push(h('button', { class: 'adpc-q-opt' + (multi(x) ? ' is-multi' : ''), type: 'button', onclick: function () { pick(isOther ? -1 : oi) } }, [
+              h('span', { class: 'adpc-q-mark' }),
+              h('span', { class: 'adpc-q-label' }, [
+                h('span', { text: op.Label || op.label || '' }),
+                op.Description || op.description ? h('small', { text: op.Description || op.description }) : null,
+              ]),
+            ]))
+          })
+          return h('div', { class: 'adpc-q-item' }, [
+            h('div', { class: 'adpc-q-text' }, [
+              h('span', { text: (questions.length > 1 ? (qi + 1) + '. ' : '') + (x.Question || x.question || '') }),
+              multi(x) ? h('span', { class: 'adpc-q-hint', text: '多选' }) : null,
+              x.Required || x.required ? h('span', { class: 'adpc-q-hint', text: '必答' }) : null,
+            ]),
+            h('div', { class: 'adpc-q-opts' }, optEls),
+            otherInput,
+          ])
+        })),
+        h('div', { class: 'adpc-q-bar' }, [
+          tip, h('span', { class: 'adpc-spacer' }),
+          h('button', { class: 'adpc-q-skip', type: 'button', text: '跳过', onclick: function () {
+            if (isChatting()) { tip.textContent = '正在回复中，请稍后再试'; return }
+            nodeCache.delete(key); submit('跳过')
+          } }),
+          submitBtn,
+        ]),
+      ])
+      submitBtn.addEventListener('click', function () {
+        if (isChatting()) { tip.textContent = '正在回复中，请稍后再试'; return }
+        var answers = []
+        questions.forEach(function (x, qi) {
+          var s0 = sel[qi], opts = x.Options || x.options || []
+          var labels = s0.picked.slice().sort(function (a, b) { return a - b }).map(function (k) { return opts[k].Label || opts[k].label || '' })
+          if (s0.other && s0.otherText.trim()) labels.push(s0.otherText.trim())
+          if (labels.length) answers.push({ Question: x.Question || x.question || '', SelectedLabels: multi(x) ? labels : [labels[0]] })
+        })
+        if (!answers.length) return
+        nodeCache.delete(key)
+        qAnswers.set(m.id, answers)
+        sendTurn({ contents: [global.ADPClient.questionnaireContent(q, answers)], user: { kind: 'questionnaire-answer', answers: answers } })
+      })
+      refresh()
+      nodeCache.set(key, card)
+      return card
+    }
+
+    // ---------- Widget 卡片
+    function renderWidget(m, b, bi, interactive) {
+      var json = JSON.stringify(b.view)
+      var key = 'w:' + m.id + ':' + bi + ':' + json.length
+      var wrap = nodeCache.get(key)
+      if (!wrap) {
+        var view = assignMeta(b)
+        var el = document.createElement('adp-widget')
+        el.setAttribute('locale', o.language || 'zh-CN')
+        el.setAttribute('widget-json', JSON.stringify(view))
+        wrap = h('div', { class: 'adpc-widget' }, [el])
+        var onAction = function (e) {
+          var action = e.detail && e.detail.action
+          if (!action || !action.type) return
+          e.stopPropagation()
+          handleWidgetAction(m, b, action)
+        }
+        wrap.addEventListener('widget-action', onAction)
+        wrap.addEventListener('cardsubmit', onAction)
+        loadWidgetSdk(widgetSdkUrl).catch(function (err) {
+          console.warn('[ADPChatUI] 卡片渲染器加载失败', err)
+          wrap.innerHTML = ''
+          wrap.appendChild(h('pre', { class: 'adpc-widget-fallback', text: JSON.stringify(b.view, null, 2) }))
+        })
+        nodeCache.set(key, wrap)
+      }
+      var w = wrap.querySelector('adp-widget')
+      if (w) { if (interactive) w.removeAttribute('disable'); else w.setAttribute('disable', 'true') }
+      return wrap
+    }
+    function assignMeta(b) {
+      var v = {}
+      for (var k in b.view) v[k] = b.view[k]
+      v._adp_widget_meta = { widgetId: b.widgetId, widgetRunId: b.widgetRunId }
+      return v
+    }
+    function parsePayload(p) { if (typeof p === 'string') { try { return JSON.parse(p) } catch (e) { return {} } } return p || {} }
+    function handleWidgetAction(m, b, action) {
+      var payload = parsePayload(action.payload)
+      if (action.type === 'sys.go_to_url') { if (payload.url) global.open(payload.url, '_blank', 'noopener'); return }
+      if (action.type === 'sys.download') {
+        if (!payload.url) return
+        var a = h('a', { href: payload.url, download: payload.filename || '', target: '_blank', rel: 'noopener' })
+        document.body.appendChild(a); a.click(); a.remove()
+        return
+      }
+      if (action.type !== 'sys.chat' && action.type !== 'sys.clarify') { console.warn('[ADPChatUI] 未支持的卡片动作', action.type); return }
+      if (isChatting()) return
+      usedWidgets.add(m.id)
+      sendTurn({ contents: [global.ADPClient.widgetActionContent(action, b.widgetId, b.widgetRunId)], user: { kind: 'widget-action' } })
+    }
+
+    function renderReferences(m) {
+      if (!m.references || !m.references.length || m.status === 'streaming') return null
+      return h('div', { class: 'adpc-refs' }, [
+        h('div', { class: 'adpc-refs-title', text: '参考来源' }),
+        h('ol', null, m.references.map(function (r) {
+          var titleEl = r.url ? h('a', { href: safeUrl(r.url), target: '_blank', rel: 'noopener', text: r.title }) : h('span', { text: r.title })
+          if (r.preview && !r.url) {
+            return h('li', null, [h('details', null, [h('summary', null, [titleEl, r.meta ? h('small', { text: ' ' + r.meta }) : null]), h('div', { class: 'adpc-ref-preview', text: r.preview })])])
+          }
+          return h('li', null, [titleEl, r.meta ? h('small', { text: ' ' + r.meta }) : null])
+        })),
+      ])
+    }
+
+    function renderOptions(m, isLast) {
+      if (!isLast || !m.options || !m.options.length || m.status === 'streaming') return null
+      return h('div', { class: 'adpc-options' }, m.options.map(function (t) {
+        return h('button', { class: 'adpc-option', type: 'button', text: t, onclick: function () { if (!isChatting()) submit(t) } })
+      }))
+    }
+
+    function renderMessage(m, idx, msgs) {
       if (m.role === 'user') {
+        if (m.kind === 'questionnaire-answer') return null        // 澄清作答只在助手卡片上以摘要显示
         return h('div', { class: 'adpc-msg adpc-msg--user' }, [
-          renderFiles(m.files),
+          renderFiles(m.files || []),
+          m.kind === 'widget-action' && !m.text ? h('div', { class: 'adpc-tag', text: '已进行操作' }) : null,
           m.text ? h('div', { class: 'adpc-bubble', text: m.text }) : null,
         ])
       }
-      var body = h('div', { class: 'adpc-md' + (m.status === 'streaming' ? ' is-streaming' : ''), html: markdown(m.text) })
+      var blocks = m.blocks || (m.text ? [{ type: 'text', text: m.text }] : [])
+      var isLast = idx === msgs.length - 1
+      var interactive = isLast && m.status !== 'streaming' && !usedWidgets.has(m.id) && !isChatting()
+      var lastText = -1
+      blocks.forEach(function (b, bi) { if (b.type === 'text') lastText = bi })
+      var body = blocks.map(function (b, bi) {
+        if (b.type === 'widget') return renderWidget(m, b, bi, interactive)
+        if (b.type === 'questionnaire') return renderQuestionnaire(m, b.questionnaire, idx, msgs)
+        if (!b.text) return null
+        return h('div', { class: 'adpc-md' + (m.status === 'streaming' && bi === lastText ? ' is-streaming' : ''), html: markdown(withQuotes(b.text, b.quotes)) })
+      })
       var copyBtn = h('button', { class: 'adpc-btn adpc-btn--icon', title: '复制', html: icon('copy'), onclick: function () {
         navigator.clipboard && navigator.clipboard.writeText(m.text).then(function () { copyBtn.innerHTML = icon('check'); setTimeout(function () { copyBtn.innerHTML = icon('copy') }, 1200) })
       } })
-      var waiting = m.status === 'streaming' && !m.text && !m.steps.length
+      var waiting = m.status === 'streaming' && !blocks.length && !(m.steps || []).length
       return h('div', { class: 'adpc-msg adpc-msg--assistant' }, [
         renderSteps(m),
         waiting ? h('div', { class: 'adpc-typing' }, [h('i'), h('i'), h('i')]) : null,
-        m.text ? body : null,
-        renderFiles(m.files),
+      ].concat(body, [
+        renderFiles(m.files || []),
+        renderReferences(m),
         m.error ? h('div', { class: 'adpc-error', text: '⚠ ' + m.error }) : null,
         m.notice ? h('div', { class: 'adpc-notice', text: m.notice }) : null,
         m.status !== 'streaming' && m.text ? h('div', { class: 'adpc-actions' }, [copyBtn, h('span', { class: 'adpc-time', text: fmtTime(m.time) })]) : null,
-      ])
+        renderOptions(m, isLast),
+      ]))
     }
 
     var raf = 0
@@ -334,7 +560,7 @@
         var msgs = sess(current).messages
         list.innerHTML = ''
         if (!msgs.length) list.appendChild(renderWelcome())
-        msgs.forEach(function (m) { list.appendChild(renderMessage(m)) })
+        msgs.forEach(function (m, i) { var el = renderMessage(m, i, msgs); if (el) list.appendChild(el) })
         if (stick || nearBottom) list.scrollTop = list.scrollHeight
       })
     }
@@ -375,14 +601,23 @@
       if (pending.some(function (p) { return p.status === 'uploading' })) return
       var files = pending.filter(function (p) { return p.status === 'done' }).map(function (p) { return p.result })
       if (!text && !files.length) return
-      var key = current
-      var s = sess(key)
-      if (s.run || s.follow) return
+      if (isChatting()) return
       input.value = ''
       autosize()
       pending = []
-      s.messages.push({ id: 'u' + Date.now(), role: 'user', status: 'done', text: text, files: files, steps: [], time: Date.now() })
-      var bot = { id: 'a' + Date.now(), role: 'assistant', status: 'streaming', text: '', files: [], steps: [], time: Date.now() }
+      sendTurn({ text: text, files: files })
+    }
+
+    /** 发送一轮：文字 / 附件，或卡片交互、澄清作答等特殊内容（input.contents），user 为本地先显示的用户消息补充字段 */
+    function sendTurn(input) {
+      var key = current
+      var s = sess(key)
+      if (s.run || s.follow) return
+      var text = input.text || '', files = input.files || []
+      var userMsg = { id: 'u' + Date.now(), role: 'user', status: 'done', text: text, files: files, blocks: [], steps: [], time: Date.now() }
+      if (input.user) for (var k in input.user) userMsg[k] = input.user[k]
+      s.messages.push(userMsg)
+      var bot = { id: 'a' + Date.now(), role: 'assistant', status: 'streaming', text: '', blocks: [], files: [], steps: [], time: Date.now() }
       s.messages.push(bot)
       var started = Date.now()
       function put(m) {
@@ -392,7 +627,7 @@
         bot = m
         if (key === current) renderMessages()
       }
-      s.run = client.send({ conversationId: isNew(key) ? '' : key, text: text, files: files }, {
+      s.run = client.send({ conversationId: isNew(key) ? '' : key, text: text, files: files, contents: input.contents }, {
         onConversation: function (c) {
           if (isNew(key)) {
             delete sessions[key]

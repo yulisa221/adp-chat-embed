@@ -16,7 +16,16 @@
  *
  * 消息结构（历史与实时一致）：
  *   { id, role: 'user'|'assistant', status: 'streaming'|'done'|'stopped'|'error',
- *     text, files: [{ name, url, size }], steps: [{ id, type, title, status, detail }], error, time }
+ *     text,                                   // 全部正文拼接（复制用）
+ *     blocks: [                               // 正文按顺序拆成块，渲染用
+ *       { type: 'text', text, quotes: [{ Position, Index }] },          // Markdown；quotes 为引用角标位置
+ *       { type: 'widget', widgetId, widgetRunId, view },                  // 卡片（交给 <adp-widget> 渲染）
+ *       { type: 'questionnaire', questionnaire } ],                       // 反问澄清（AskUserQuestion）
+ *     options: ['推荐追问'], references: [{ index, title, url, meta, preview }],
+ *     files: [{ name, url, size, image }], steps: [{ id, type, title, status, detail }],
+ *     kind: 'questionnaire-answer' | 'widget-action' | undefined,         // 用户消息：澄清作答 / 卡片操作
+ *     answers,                                                           // kind 为 questionnaire-answer 时的作答
+ *     error, time, elapsed }
  */
 ;(function (global) {
   'use strict'
@@ -103,7 +112,24 @@
         var b = old || { Type: 'text', Text: '' }
         return assign(b, { Text: (b.Text || '') + (ev.Text || '') })
       })
+    if (t === 'text.replace')
+      return withContent(rec, ev.MessageId, ev.ContentIndex || 0, function (old) { return assign(old || { Type: 'text' }, { Text: ev.Text || '' }) })
+    if (t === 'reference.added')
+      return withContent(rec, ev.MessageId, ev.ContentIndex || 0, function (old) {
+        var b = old || { Type: 'text', Text: '' }
+        var refs = (b.References || []).slice()
+        var r = ev.Reference || {}
+        var key = refKey(r)
+        var i = refs.findIndex(function (x) { return refKey(x) === key })
+        if (i >= 0) refs[i] = assign(refs[i], r); else refs.push(r)
+        return assign(b, { References: refs })
+      })
     return rec
+  }
+
+  function refKey(r) {
+    var d = r.DocRefer || {}
+    return String(r.Id || r.ReferBizId || d.ReferenceId || d.ReferBizId || r.Url || d.Url || (r.Index + ':' + r.Name))
   }
 
   // ------------------------------------------------------------------ 记录 → 简化消息
@@ -114,14 +140,75 @@
       .map(function (c) { return c.Text }).join('')
   }
 
+  var IMAGE_RE = /\.(jpe?g|png|gif|webp|bmp)(\?|$)/i
   function filesOf(contents) {
     var out = []
     ;(contents || []).forEach(function (c) {
       if (!c) return
-      if (c.Type === 'file' && c.File) out.push({ name: c.File.FileName || '文件', url: c.File.FileUrl || '', size: Number(c.File.FileSize) || 0 })
+      if (c.Type === 'file' && c.File) {
+        var f = c.File, url = f.FileUrl || f.Url || ''
+        out.push({ name: f.FileName || '文件', url: url, size: Number(f.FileSize) || 0,
+          image: /^image\//i.test(f.FileType || '') || IMAGE_RE.test(f.FileName || '') || /^(jpe?g|png|gif|webp|bmp)$/i.test(f.FileType || '') })
+      }
       if (c.Type === 'image' && (c.Image || c.Url)) { var u = (c.Image && (c.Image.Url || c.Image.ImageUrl)) || c.Url; out.push({ name: '图片', url: u, image: true }) }
     })
     return out
+  }
+
+  /** widget 内容 → { widgetId, widgetRunId, view }；View 可能是 JSON 字符串 / 对象，或 base64 / URL 编码的 EncodedWidget */
+  function widgetOf(w) {
+    if (!w) return null
+    var view = w.View
+    if (!view && w.EncodedWidget) {
+      try { view = atob(w.EncodedWidget) } catch (e) { try { view = decodeURIComponent(w.EncodedWidget) } catch (e2) { view = w.EncodedWidget } }
+    }
+    if (typeof view === 'string') { try { view = JSON.parse(view) } catch (e) { return null } }
+    if (!view || typeof view !== 'object' || !view.type) return null
+    return { type: 'widget', widgetId: w.WidgetId || '', widgetRunId: w.WidgetRunId || '', view: view }
+  }
+
+  /** 正文里也可能直接写 ```adp-widget 代码块（与官方 MdContent 一致）；只拆已闭合的块，流式中未闭合的先按文本显示 */
+  var FENCE = /```adp-widget[ \t]*\n([\s\S]*?)\n?```/g
+  function splitText(text, quotes, out) {
+    var last = 0, m, found = false
+    FENCE.lastIndex = 0
+    while ((m = FENCE.exec(text))) {
+      var view = null
+      try { view = JSON.parse(m[1]) } catch (e) { continue }
+      if (!view || !view.type) continue
+      found = true
+      if (m.index > last) out.push({ type: 'text', text: text.slice(last, m.index), quotes: [] })
+      var meta = view._adp_widget_meta || {}
+      out.push({ type: 'widget', widgetId: meta.widgetId || '', widgetRunId: meta.widgetRunId || '', view: view })
+      last = m.index + m[0].length
+    }
+    if (!found) { out.push({ type: 'text', text: text, quotes: quotes || [] }); return }
+    if (last < text.length) out.push({ type: 'text', text: text.slice(last), quotes: [] })
+  }
+
+  function referenceOf(r) {
+    var d = r.DocRefer || {}
+    var meta = []
+    if (r.PageInfos && r.PageInfos.length) meta.push('P' + r.PageInfos.join(', '))
+    if (r.SheetInfos && r.SheetInfos.length) meta.push(r.SheetInfos.join(', '))
+    return {
+      index: r.Index, title: d.DocName || r.DocName || r.Name || '未命名来源',
+      url: r.Url || d.Url || (r.WebSearchRefer && r.WebSearchRefer.Url) || '',
+      meta: meta.join(' · '), preview: String(r.PageContent || r.OrgData || '').replace(/\s+/g, ' ').trim(),
+    }
+  }
+
+  /** 工具步骤标题：ADP 常把参数整段拼在标题里（如 AskUserQuestion({...})），只保留工具名和一小段参数 */
+  var TOOL_NAMES = { AskUserQuestion: '向你提问' }
+  function stepTitle(m) {
+    var t = String(m.Title || (m.ExtraInfo && m.ExtraInfo.ToolName) || m.Name || '')
+    var call = t.match(/^([\w.-]+)\(([\s\S]*)\)$/)
+    if (call) {
+      if (TOOL_NAMES[call[1]]) return TOOL_NAMES[call[1]]
+      var arg = call[2].replace(/\s+/g, ' ')
+      return call[1] + (arg && arg !== '{}' ? ' ' + (arg.length > 40 ? arg.slice(0, 40) + '…' : arg) : '')
+    }
+    return t.length > 80 ? t.slice(0, 80) + '…' : t
   }
 
   function toMessage(rec) {
@@ -129,25 +216,51 @@
     var extra = rec.ExtraInfo || {}
     var msg = {
       id: rec.RecordId || '', role: rec.Role === 'user' ? 'user' : 'assistant',
-      status: STATUS[rec.Status] || 'done', text: '', files: [], steps: [], error: '',
+      status: STATUS[rec.Status] || 'done', text: '', blocks: [], options: [], references: [], files: [], steps: [], error: '',
       time: Number(extra.StartTime) || 0, elapsed: Number(extra.Elapsed) || 0, raw: rec,
     }
-    var texts = []
+    var texts = [], refSeen = {}
     ;(rec.Messages || []).forEach(function (m) {
-      if (msg.role === 'user' || m.Type === 'reply' || m.Type === 'question') {
-        var t = textOf(m.Contents)
-        if (t) texts.push(t)
-        msg.files = msg.files.concat(filesOf(m.Contents))
+      var primary = msg.role === 'user' || m.Type === 'reply' || m.Type === 'question'
+      if (!primary) {
+        if (m.Type === 'recommendation') return
+        var title = stepTitle(m)
+        if (!title && !textOf(m.Contents)) return
+        msg.steps.push({ id: m.MessageId, type: m.Type, title: title || '处理中', status: STATUS[m.Status] || 'done', detail: textOf(m.Contents) })
         return
       }
-      if (m.Type === 'recommendation') return
-      var title = m.Title || (m.ExtraInfo && m.ExtraInfo.ToolName) || m.Name || ''
-      if (!title && !textOf(m.Contents)) return
-      msg.steps.push({ id: m.MessageId, type: m.Type, title: title || '处理中', status: STATUS[m.Status] || 'done', detail: textOf(m.Contents) })
+      ;(m.Contents || []).forEach(function (c) {
+        if (!c) return
+        if ((c.Type === 'text' || c.Type === 'json_text') && c.Text) { texts.push(c.Text); splitText(c.Text, c.QuoteInfos, msg.blocks) }
+        else if (c.Type === 'widget') { var w = widgetOf(c.Widget); if (w) msg.blocks.push(w) }
+        else if (c.Type === 'questionnaire' && c.Questionnaire) {
+          if (msg.role === 'user') { msg.kind = 'questionnaire-answer'; msg.answers = c.Questionnaire.Answers || c.Questionnaire.answers || [] }
+          else msg.blocks.push({ type: 'questionnaire', questionnaire: c.Questionnaire })
+        } else if (c.Type === 'widget_action') msg.kind = 'widget-action'
+        ;(c.OptionCards || []).forEach(function (o) { if (o && msg.options.indexOf(o) < 0) msg.options.push(o) })
+        ;(c.References || []).forEach(function (r) { var k = refKey(r); if (!refSeen[k]) { refSeen[k] = 1; msg.references.push(referenceOf(r)) } })
+      })
+      msg.files = msg.files.concat(filesOf(m.Contents))
     })
     msg.text = texts.join('\n\n')
     if (rec.Status === 'failed' && !msg.text) msg.error = rec.StatusDesc || '回复失败'
     return msg
+  }
+
+  /** 反问澄清作答的上行内容：原题目 + Answers（[{ Question, SelectedLabels }]），与官方一致 */
+  function questionnaireContent(questionnaire, answers) {
+    var q = assign(questionnaire, { Answers: answers })
+    if ('answers' in questionnaire) q.answers = answers
+    return { Type: 'questionnaire', Questionnaire: q }
+  }
+
+  /** 卡片交互（sys.chat / sys.clarify）的上行内容 */
+  function widgetActionContent(action, widgetId, widgetRunId) {
+    return { Type: 'widget_action', WidgetAction: {
+      WidgetId: widgetId || '', WidgetRunId: widgetRunId || '', ActionType: action.type || '',
+      Payload: typeof action.payload === 'string' ? action.payload : JSON.stringify(action.payload || {}),
+      WidgetSnapshot: action.widgetSnapshot || action.snapshot || '',
+    } }
   }
 
   // ------------------------------------------------------------------ 客户端
@@ -402,5 +515,6 @@
     return api
   }
 
-  global.ADPClient = { create: create, toMessage: toMessage, applyEvent: applyEvent }
+  global.ADPClient = { create: create, toMessage: toMessage, applyEvent: applyEvent,
+    questionnaireContent: questionnaireContent, widgetActionContent: widgetActionContent }
 })(window)

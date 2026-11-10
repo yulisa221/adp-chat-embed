@@ -25,6 +25,8 @@ def apply_event(event: dict, current: Record | None) -> Record | None:
         return _add_reference(current, event.get("MessageId", ""), event.get("ContentIndex", 0), event.get("Reference") or {})
     if t == "text.delta":
         return _append_text(current, event.get("MessageId", ""), event.get("ContentIndex", 0), event.get("Text", ""))
+    if t == "text.replace":
+        return _replace_text(current, event.get("MessageId", ""), event.get("ContentIndex", 0), event.get("Text", ""))
     return current
 
 
@@ -96,6 +98,14 @@ def _append_text(current, message_id, index, text):
         return {**base, "Text": (base.get("Text") or "") + (text or "")}
 
     return _set_content(current, message_id, index, fn)
+
+
+def _replace_text(current, message_id, index, text):
+    """text.replace：整段替换某条内容的文字（如工具结果由占位改为最终文本）。"""
+    if current is None:
+        return None
+    return _set_content(current, message_id, index,
+                        lambda old: {**(old or {"Type": "text"}), "Text": text or ""})
 
 
 def _ref_key(ref: dict) -> str:
