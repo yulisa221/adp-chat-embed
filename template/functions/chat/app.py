@@ -61,9 +61,9 @@ log = logging.getLogger("adp-chat")
 ADP_CHAT_URL = os.environ.get("ADP_CHAT_URL", "https://wss.lke.cloud.tencent.com/adp/v2/chat")
 ADP_WS_URL = os.environ.get("ADP_WS_URL", "wss://wss.lke.cloud.tencent.com/adp/v2/chat/conn/")
 SSE_IDLE_TIMEOUT = float(os.environ.get("SSE_IDLE_TIMEOUT", "300"))
-# sse 方式下单次回复的最长秒数，默认 5 分钟（295 秒）。必须比云函数超时小几秒，留出保存历史的时间：
-# 部署时配 --fn-timeout 300；超时调大时同步调大本值
-CHAT_MAX_SECONDS = float(os.environ.get("CHAT_MAX_SECONDS", "295"))
+# sse 方式下单次回复的最长秒数，默认 895 秒（约 15 分钟）。必须比云函数超时小几秒，留出保存历史的时间：
+# 部署时配 --fn-timeout 900（云函数上限）；超时调小时同步调小本值
+CHAT_MAX_SECONDS = float(os.environ.get("CHAT_MAX_SECONDS", "895"))
 # 上游长时间无数据时（如 Agent 在执行工具）每隔这么多秒发一次 SSE 注释心跳，防止网关按空闲断开
 HEARTBEAT_SECONDS = float(os.environ.get("HEARTBEAT_SECONDS", "15"))
 
